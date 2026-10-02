@@ -1,4 +1,11 @@
-# samevisit
+# samevisit <img src="man/figures/logo.png" align="right" height="139" alt="samevisit hex logo: two overlapping circles on a navy hexagon" />
+
+<!-- badges: start -->
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![R >= 4.1.0](https://img.shields.io/badge/R-%3E%3D%204.1.0-blue.svg)](https://cran.r-project.org/)
+[![GitHub last commit](https://img.shields.io/github/last-commit/mufflyt/samevisit.svg)](https://github.com/mufflyt/samevisit/commits/main)
+<!-- badges: end -->
 
 Decision-analytic cost modeling for comparing a standalone procedure against
 the same procedure performed during an already-scheduled encounter ("same
