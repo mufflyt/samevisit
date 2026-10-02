@@ -1,0 +1,44 @@
+Package: samevisit
+Title: Modeling the Clinical and Economic Value of Concurrent Medical Procedures
+Version: 0.1.0
+Authors@R: person("Tyler", "Muffly", email = "tyler.muffly@dhha.org", role = c("aut", "cre"))
+Description: Decision-analytic cost modeling for comparing a standalone
+    procedure against the same procedure performed during an already-scheduled
+    encounter ("same visit") instead of as its own separate visit -- cost
+    components, escalation/rescue probabilities, deterministic and
+    probabilistic sensitivity analysis, and threshold analysis. Built as a
+    cost-minimization model comparing standalone office endometrial biopsy,
+    operative dilation and curettage, and endometrial biopsy performed during
+    an already-scheduled surveillance colonoscopy, for endometrial cancer
+    surveillance in Lynch syndrome; its cost-component, escalation, and
+    sensitivity-analysis machinery generalizes to other same-visit-vs.-
+    separate-visit procedure comparisons.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 8.0.0
+Imports:
+    readr,
+    dplyr,
+    tibble,
+    tidyr,
+    purrr,
+    ggplot2,
+    scales,
+    forcats,
+    rlang,
+    magrittr,
+    duckplyr,
+    httr2,
+    readxl,
+    stringr,
+    openssl,
+    DiagrammeR,
+    DiagrammeRsvg,
+    rsvg,
+    maps,
+    mapproj
+Suggests:
+    testthat
+URL: https://github.com/mufflyt/samevisit, https://github.com/mufflyt/emb_colonoscopy
+BugReports: https://github.com/mufflyt/samevisit/issues
