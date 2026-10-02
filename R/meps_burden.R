@@ -9,6 +9,11 @@
 # current MEPS codebook before use -- they were not independently
 # re-verified when this layer was integrated.
 
+#' Read a MEPS data workbook
+#'
+#' @param path Path to the MEPS `.xlsx` file.
+#' @return Tibble of the workbook's first sheet, as read by
+#'   `readxl::read_xlsx()`.
 #' @export
 read_meps_xlsx <- function(path) {
   base::message("Reading MEPS workbook: ", path)
@@ -16,6 +21,17 @@ read_meps_xlsx <- function(path) {
   readxl::read_xlsx(path)
 }
 
+#' Estimate weighted MEPS office-visit total and out-of-pocket cost
+#'
+#' Filters the MEPS office-based visit file to rows with a positive person
+#' weight and non-negative payment amounts, then computes the person-weight
+#' weighted mean total payment and out-of-pocket payment.
+#'
+#' @param office_tbl Tibble of the MEPS office-based visit file, with
+#'   columns `OBXP24X` (total payment), `OBSF24X` (out-of-pocket amount),
+#'   and `PERWT24F` (person weight).
+#' @return Tibble with columns `metric` (`"total_payment"` or
+#'   `"out_of_pocket"`) and `weighted_mean`.
 #' @export
 estimate_meps_office_visit_cost <- function(office_tbl) {
   base::message("Estimating weighted MEPS office-visit cost.")
@@ -65,6 +81,15 @@ estimate_meps_office_visit_cost <- function(office_tbl) {
   )
 }
 
+#' Estimate the weighted mean hourly wage from the MEPS Jobs file
+#'
+#' Filters to rows with a positive reported hourly wage and positive person
+#' weight, then computes the person-weight weighted mean wage.
+#'
+#' @param jobs_tbl Tibble of the MEPS Jobs file, with columns `HRLYWAGE`
+#'   (reported hourly wage) and `PERWT24F` (person weight).
+#' @return One-row tibble with `population` (`"reported_hourly_wage"`),
+#'   `n_jobs` (count of jobs used), and `weighted_mean_wage`.
 #' @export
 estimate_meps_hourly_wage <- function(jobs_tbl) {
   base::message("Estimating weighted MEPS hourly wage.")
@@ -103,6 +128,16 @@ estimate_meps_hourly_wage <- function(jobs_tbl) {
   )
 }
 
+#' Convert avoided hours into a patient time-cost estimate
+#'
+#' Adds `avoided_hours` and `patient_time_cost` (`weighted_mean_wage *
+#' avoided_hours`) columns to a wage summary tibble.
+#'
+#' @param wage_summary_tbl Tibble from [estimate_meps_hourly_wage()] (or
+#'   equivalent), with a `weighted_mean_wage` column.
+#' @param avoided_hours Numeric scalar, hours of patient time avoided.
+#' @return `wage_summary_tbl` with `avoided_hours` and `patient_time_cost`
+#'   columns added.
 #' @export
 estimate_patient_time_cost <- function(
     wage_summary_tbl,

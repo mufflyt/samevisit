@@ -1,6 +1,7 @@
 # samevisit <img src="man/figures/logo.png" align="right" height="139" alt="samevisit hex logo: two overlapping circles on a navy hexagon" />
 
 <!-- badges: start -->
+[![R-CMD-check](https://github.com/mufflyt/samevisit/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/mufflyt/samevisit/actions/workflows/R-CMD-check.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 [![R >= 4.1.0](https://img.shields.io/badge/R-%3E%3D%204.1.0-blue.svg)](https://cran.r-project.org/)
@@ -196,11 +197,19 @@ for runnable, documented examples, and
 [`emb_colonoscopy/docs/samevisit_generic_api.md`](https://github.com/mufflyt/emb_colonoscopy/blob/main/docs/samevisit_generic_api.md)
 for the fuller generic-API writeup this README summarizes.
 
-**Not yet CRAN-ready.** No `R CMD check` NOTE/WARNING cleanup has been done
-beyond what's needed for a clean local install (e.g. several functions write
-to caller-specified relative paths rather than a package-safe location). See
-`emb_colonoscopy`'s own `docs/reuse_mapping.md` for the fuller account of
-what was and wasn't done in this extraction and in genericizing it.
+**`R CMD check` passes clean** (0 errors, 0 warnings, 0 notes -- see the badge
+above, or run it yourself: `R CMD build . && R CMD check samevisit_0.1.0.tar.gz`).
+Every exported function is documented, every used package is a declared
+dependency, and the `LICENSE`/`LICENSE.md` split follows the standard
+`usethis::use_mit_license()` convention (the short DCF stub R requires in
+`LICENSE`, the full legal text in `LICENSE.md` for GitHub's license
+detector). **Not yet CRAN-submitted**, and likely wouldn't pass `--as-cran`
+checks without further work -- several functions (e.g. `save_table()`)
+default to writing into a `tables/` directory relative to the working
+directory rather than a caller-specified or package-safe location, which
+CRAN policy does not allow. See `emb_colonoscopy`'s own
+`docs/reuse_mapping.md` for the fuller account of what was and wasn't done
+in this extraction and in genericizing it.
 
 ## Where this came from
 

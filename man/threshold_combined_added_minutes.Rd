@@ -14,6 +14,9 @@ threshold_combined_added_minutes(
 \item{model_parameters}{Tibble from \code{\link[=load_model_parameters]{load_model_parameters()}}.}
 
 \item{price_index_table}{Tibble from \code{\link[=load_price_index_table]{load_price_index_table()}}.}
+
+\item{search_upper}{Numeric scalar, the upper bound of the search
+interval (the lower bound is fixed at 0).}
 }
 \value{
 A one-row tibble, see \code{\link[=find_parameter_threshold]{find_parameter_threshold()}}.

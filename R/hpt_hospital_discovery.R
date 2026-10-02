@@ -1,3 +1,12 @@
+#' Normalize raw column names to snake_case
+#'
+#' Lowercases, collapses runs of non-alphanumeric characters to a single
+#' underscore, trims leading/trailing underscores, then de-duplicates any
+#' resulting collisions with [base::make.unique()].
+#'
+#' @param column_names Character vector of raw column names.
+#' @return Character vector of normalized, unique column names, same length
+#'   as `column_names`.
 #' @export
 normalize_public_names <- function(column_names) {
   normalized <- column_names |>
@@ -37,6 +46,13 @@ normalize_cms_hospital_frame_names <- function(hospital_tbl) {
   hospital_tbl
 }
 
+#' Fetch CMS provider-data metastore metadata for a dataset
+#'
+#' @param identifier CMS provider-data dataset identifier. Defaults to the
+#'   Hospital General Information dataset.
+#' @return A list, the parsed JSON metadata response (via
+#'   `httr2::resp_body_json(simplifyVector = FALSE)`), including a
+#'   `distribution` field listing available file formats.
 #' @export
 cms_provider_dataset_metadata <- function(
     identifier = "xubh-q36u") {
@@ -62,6 +78,15 @@ cms_provider_dataset_metadata <- function(
   )
 }
 
+#' Extract the CSV download URL from CMS dataset metadata
+#'
+#' Finds the single `distribution` entry in `metadata` whose media type is
+#' `"text/csv"` or whose `downloadURL` ends in `.csv`, and errors if there
+#' is not exactly one such entry.
+#'
+#' @param metadata List of CMS provider-data metadata, as returned by
+#'   [cms_provider_dataset_metadata()].
+#' @return Character scalar, the CSV distribution's `downloadURL`.
 #' @export
 cms_csv_distribution_url <- function(metadata) {
   distributions <- metadata$distribution
@@ -103,6 +128,19 @@ cms_csv_distribution_url <- function(metadata) {
   x
 }
 
+#' Download and validate the CMS hospital sampling frame
+#'
+#' Looks up the CMS Hospital General Information CSV via
+#' [cms_provider_dataset_metadata()] and [cms_csv_distribution_url()],
+#' downloads it, normalizes its column names, checks that the columns
+#' this pipeline depends on are present, and writes a provenance record
+#' (source URL, local path, sha256, download timestamp) alongside it.
+#'
+#' @param directory Directory to save the downloaded CSV and its
+#'   provenance file into; created if it does not exist.
+#' @param identifier CMS provider-data dataset identifier to download.
+#' @return Tibble of the downloaded hospital frame with normalized column
+#'   names, all columns read as character.
 #' @export
 download_cms_hospital_frame <- function(
     directory = "data-raw/cms/hospitals",
@@ -196,6 +234,13 @@ download_cms_hospital_frame <- function(
   hospital_tbl
 }
 
+#' Map a US state abbreviation to its census region
+#'
+#' @param state Character vector of two-letter US state/territory
+#'   abbreviations.
+#' @return Character vector, one of `"Northeast"`, `"Midwest"`, `"South"`,
+#'   `"West"`, or `NA_character_` for an unrecognized abbreviation. Same
+#'   length as `state`.
 #' @export
 census_region_from_state <- function(state) {
   northeast <- base::c(
@@ -227,6 +272,14 @@ census_region_from_state <- function(state) {
   )
 }
 
+#' Classify a CMS hospital ownership string into a coarse group
+#'
+#' @param ownership Character vector of raw CMS "Hospital Ownership"
+#'   values (e.g. "Government - State", "Voluntary non-profit - Church",
+#'   "Proprietary").
+#' @return Character vector, one of `"government"`, `"nonprofit"`,
+#'   `"for_profit"`, or `NA_character_` if none of those patterns match.
+#'   Same length as `ownership`.
 #' @export
 ownership_group_from_text <- function(ownership) {
   dplyr::case_when(
@@ -246,6 +299,13 @@ ownership_group_from_text <- function(ownership) {
   )
 }
 
+#' Add census region and ownership group columns to a hospital frame
+#'
+#' @param hospital_tbl Tibble with `state` and `hospital_ownership`
+#'   columns, e.g. from [download_cms_hospital_frame()].
+#' @return `hospital_tbl` with two added columns: `census_region` (from
+#'   [census_region_from_state()]) and `ownership_group` (from
+#'   [ownership_group_from_text()]).
 #' @export
 classify_hpt_hospitals <- function(hospital_tbl) {
   base::message("Classifying hospitals for HPT sampling.")
@@ -259,6 +319,25 @@ classify_hpt_hospitals <- function(hospital_tbl) {
     )
 }
 
+#' Draw a stratified sample of hospitals for HPT discovery
+#'
+#' Classifies hospitals via [classify_hpt_hospitals()], restricts to
+#' "Acute Care Hospitals" with a known census region and ownership group,
+#' then samples `per_stratum` hospitals from each of the 12
+#' census-region x ownership-group strata using a fixed seed for
+#' reproducibility. Errors if any stratum has fewer than `per_stratum`
+#' eligible hospitals, or if the final sample size is not exactly
+#' `per_stratum * 12`.
+#'
+#' @param hospital_tbl Tibble of hospitals, e.g. from
+#'   [download_cms_hospital_frame()].
+#' @param per_stratum Number of hospitals to sample from each
+#'   region x ownership stratum.
+#' @param seed Integer seed passed to [withr::with_seed()] for
+#'   reproducible sampling.
+#' @return Tibble of sampled hospitals, `per_stratum * 12` rows, with
+#'   `census_region` and `ownership_group` columns added, sorted by
+#'   region, ownership group, and facility ID.
 #' @export
 sample_hpt_hospitals <- function(hospital_tbl,
                                  per_stratum = 10L,
@@ -337,6 +416,23 @@ sample_hpt_hospitals <- function(hospital_tbl,
   sampled_tbl
 }
 
+#' Write the HPT hospital sample and domain template to disk
+#'
+#' Writes `sample_tbl` to a canonical `hpt_hospital_sample.csv` and a
+#' timestamped audit copy. Also writes a `hpt_hospital_domains.csv`
+#' template (one row per sampled hospital, with blank `website_domain`
+#' and `domain_source` columns to be filled in later) unless that file
+#' already exists and `overwrite_domains` is `FALSE`, in which case the
+#' existing domain file is left untouched.
+#'
+#' @param sample_tbl Tibble of sampled hospitals, e.g. from
+#'   [sample_hpt_hospitals()].
+#' @param config_dir Directory to write the sample and domain files
+#'   into; created if it does not exist.
+#' @param overwrite_domains If `TRUE`, regenerate the domain template
+#'   even if `hpt_hospital_domains.csv` already exists.
+#' @return A list with `sample_path`, `sample_audit_path`, and
+#'   `domain_path`, the paths written.
 #' @export
 write_hpt_sample_files <- function(
     sample_tbl,
@@ -398,6 +494,15 @@ write_hpt_sample_files <- function(
   )
 }
 
+#' Normalize a hospital website domain string
+#'
+#' Trims whitespace, strips a leading `http://`/`https://` scheme, and
+#' strips any path or trailing slashes, leaving a bare host (e.g.
+#' `"www.example.org"`).
+#'
+#' @param domain Character vector of raw domain or URL strings.
+#' @return Character vector of normalized bare hostnames, same length as
+#'   `domain`.
 #' @export
 normalize_hpt_domain <- function(domain) {
   normalized <- domain |>
@@ -412,6 +517,17 @@ normalize_hpt_domain <- function(domain) {
   normalized
 }
 
+#' Look up the first value for a given key in parallel key/value vectors
+#'
+#' Used to pull a single named field (e.g. `"mrf-url"`) out of one
+#' cms-hpt.txt location block, where `key` and `value` are the parsed
+#' key and value columns for that block.
+#'
+#' @param key Character vector of keys.
+#' @param value Character vector of values, same length as `key`.
+#' @param target Character scalar key to look up.
+#' @return Character scalar, the first `value` where `key == target`, or
+#'   `NA_character_` if `target` does not occur in `key`.
 #' @export
 hpt_field_value <- function(key,
                             value,
@@ -425,6 +541,19 @@ hpt_field_value <- function(key,
   matches[[1]]
 }
 
+#' Parse cms-hpt.txt content into a tibble of discovered locations
+#'
+#' cms-hpt.txt is a plain-text `key: value` format grouped into blocks,
+#' each block starting with a `location-name` line. This splits
+#' `hpt_text` into lines, parses each `key: value` pair, groups
+#' consecutive pairs into blocks on `location-name`, and pulls out the
+#' fields this pipeline cares about via [hpt_field_value()].
+#'
+#' @param hpt_text Character scalar, the raw contents of a cms-hpt.txt
+#'   file.
+#' @return Tibble with one row per location block and columns
+#'   `location_name`, `source_page_url`, `mrf_url`, `contact_name`,
+#'   `contact_email`. Zero rows if no `location-name` block is found.
 #' @export
 parse_cms_hpt_text <- function(hpt_text) {
   base::message("Parsing cms-hpt.txt content.")
@@ -498,6 +627,17 @@ parse_cms_hpt_text <- function(hpt_text) {
     dplyr::select(-"location_block")
 }
 
+#' Fetch a hospital's cms-hpt.txt discovery file
+#'
+#' Normalizes `domain` via [normalize_hpt_domain()] and tries
+#' `https://<domain>/cms-hpt.txt` then `http://<domain>/cms-hpt.txt`,
+#' returning the first successful response.
+#'
+#' @param domain Character scalar hospital website domain (or URL; will
+#'   be normalized).
+#' @return A list with `url` (the URL that succeeded), `status` (HTTP
+#'   status code), and `text` (the response body). Errors, including the
+#'   last request's error message, if both URLs fail.
 #' @export
 fetch_cms_hpt_text <- function(domain) {
   normalized_domain <- normalize_hpt_domain(domain)
@@ -561,6 +701,13 @@ fetch_cms_hpt_text <- function(domain) {
   )
 }
 
+#' Normalize a hospital name for fuzzy matching
+#'
+#' Uppercases, replaces any non-alphanumeric, non-space character with a
+#' space, and squishes repeated/leading/trailing whitespace.
+#'
+#' @param name Character vector of hospital names.
+#' @return Character vector of normalized names, same length as `name`.
 #' @export
 normalize_hospital_name <- function(name) {
   name |>
@@ -569,6 +716,15 @@ normalize_hospital_name <- function(name) {
     stringr::str_squish()
 }
 
+#' Split a hospital name into matching tokens
+#'
+#' Normalizes `name` via [normalize_hospital_name()], splits on
+#' whitespace, and drops common generic stop words (e.g. "HOSPITAL",
+#' "MEDICAL", "CENTER", "HEALTH", "SYSTEM") that would otherwise inflate
+#' similarity between unrelated hospitals.
+#'
+#' @param name Character scalar hospital name.
+#' @return Character vector of uppercase tokens, with stop words removed.
 #' @export
 hospital_name_tokens <- function(name) {
   stop_words <- base::c(
@@ -589,6 +745,16 @@ hospital_name_tokens <- function(name) {
   base::setdiff(tokens, stop_words)
 }
 
+#' Score the similarity of two hospital names
+#'
+#' Tokenizes both names via [hospital_name_tokens()] and computes the
+#' Jaccard similarity (intersection over union) of the two token sets.
+#'
+#' @param reference_name Character scalar, the hospital name to match
+#'   against.
+#' @param candidate_name Character scalar, the candidate hospital name.
+#' @return Numeric scalar in `[0, 1]`; `0` if both names tokenize to no
+#'   tokens at all.
 #' @export
 hospital_name_score <- function(reference_name,
                                 candidate_name) {
@@ -609,6 +775,24 @@ hospital_name_score <- function(reference_name,
   ) / base::length(union_tokens)
 }
 
+#' Select the HPT location row matching a given facility
+#'
+#' Restricts `discovered_tbl` to rows with a non-blank `mrf_url`. If
+#' exactly one such row remains, returns it directly (with
+#' `name_match_score` set to 1). Otherwise scores every remaining row's
+#' `location_name` against `facility_name` via [hospital_name_score()]
+#' and returns the unique top-scoring row, provided its score is at
+#' least `min_score`; errors if no row reaches `min_score` or if the top
+#' score is tied between multiple rows.
+#'
+#' @param discovered_tbl Tibble of candidate locations, e.g. from
+#'   [parse_cms_hpt_text()].
+#' @param facility_name Character scalar, the CMS facility name to match
+#'   against.
+#' @param min_score Minimum [hospital_name_score()] required to accept a
+#'   match when more than one candidate location exists.
+#' @return One-row tibble (a subset of `discovered_tbl`'s rows) with an
+#'   added `name_match_score` column.
 #' @export
 select_hpt_location <- function(discovered_tbl,
                                 facility_name,
@@ -658,6 +842,12 @@ select_hpt_location <- function(discovered_tbl,
     dplyr::slice(1L)
 }
 
+#' Infer a machine-readable file's format from its URL
+#'
+#' @param mrf_url Character vector of MRF URLs. Query strings and
+#'   fragments are stripped before checking the extension.
+#' @return Character vector, one of `"csv"`, `"json"`, or `"unknown"`.
+#'   Same length as `mrf_url`.
 #' @export
 infer_mrf_format <- function(mrf_url) {
   clean_url <- stringr::str_remove(mrf_url, "[?#].*$")
@@ -675,6 +865,11 @@ infer_mrf_format <- function(mrf_url) {
   )
 }
 
+#' Check whether an MRF URL responds to an HTTP HEAD request
+#'
+#' @param mrf_url Character scalar URL to probe.
+#' @return Integer scalar HTTP status code, or `NA_integer_` if the
+#'   request errors (e.g. timeout, DNS failure, connection refused).
 #' @export
 check_mrf_head <- function(mrf_url) {
   checked <- base::tryCatch(
@@ -697,6 +892,36 @@ check_mrf_head <- function(mrf_url) {
   checked
 }
 
+#' Resolve one hospital's machine-readable price-transparency file
+#'
+#' Orchestrates the full per-hospital discovery pipeline: if
+#' `website_domain` is blank, returns immediately with
+#' `resolution_status = "missing_domain"`; otherwise fetches the
+#' hospital's cms-hpt.txt ([fetch_cms_hpt_text()]), parses it
+#' ([parse_cms_hpt_text()]), selects the matching location
+#' ([select_hpt_location()]), infers the MRF format
+#' ([infer_mrf_format()]), and probes the MRF URL
+#' ([check_mrf_head()]). Any error along that path is caught and
+#' reported as `resolution_status = "failed"` with `error_message` set,
+#' rather than propagated.
+#'
+#' @param facility_id CMS facility ID (CCN).
+#' @param facility_name CMS facility name, used for fuzzy location
+#'   matching.
+#' @param citytown Facility city/town, passed through to the output.
+#' @param state Facility state, passed through to the output.
+#' @param census_region Facility census region, passed through to the
+#'   output.
+#' @param ownership_group Facility ownership group, passed through to
+#'   the output.
+#' @param website_domain Hospital website domain (or URL); `NA` or blank
+#'   short-circuits to `resolution_status = "missing_domain"`.
+#' @return One-row tibble with `facility_id`, `facility_name`,
+#'   `citytown`, `state`, `census_region`, `ownership_group`,
+#'   `website_domain`, `resolution_status` (`"resolved"`,
+#'   `"missing_domain"`, or `"failed"`), `cms_hpt_url`, `location_name`,
+#'   `source_page_url`, `mrf_url`, `mrf_format`, `mrf_head_status`,
+#'   `name_match_score`, and `error_message`.
 #' @export
 resolve_one_hpt_hospital <- function(facility_id,
                                      facility_name,
@@ -798,6 +1023,26 @@ resolve_one_hpt_hospital <- function(facility_id,
   )
 }
 
+#' Resolve MRF locations for an entire HPT hospital sample
+#'
+#' Left-joins `sample_tbl` to `domains_tbl` on `facility_id`, then calls
+#' [resolve_one_hpt_hospital()] for every row via [purrr::pmap_dfr()].
+#' Splits the combined results into a cleaned, renamed `manifest` of
+#' only the successfully resolved hospitals and a `failures` table of
+#' everything else.
+#'
+#' @param sample_tbl Tibble of sampled hospitals with `facility_id`,
+#'   `facility_name`, `citytown`, `state`, `census_region`, and
+#'   `ownership_group` columns.
+#' @param domains_tbl Tibble with `facility_id` and `website_domain`
+#'   columns, e.g. from the HPT domain template file.
+#' @return A list with `manifest` (tibble of resolved hospitals, with
+#'   columns `hospital_name`, `hospital_state`, `facility_id`,
+#'   `citytown`, `census_region`, `ownership_group`, `website_domain`,
+#'   `cms_hpt_url`, `location_name`, `source_page_url`, `mrf_url`,
+#'   `mrf_format`, `mrf_head_status`, `name_match_score`) and `failures`
+#'   (tibble of rows where `resolution_status != "resolved"`, in the
+#'   shape returned by [resolve_one_hpt_hospital()]).
 #' @export
 resolve_hpt_manifest <- function(sample_tbl,
                                  domains_tbl) {
@@ -872,6 +1117,18 @@ resolve_hpt_manifest <- function(sample_tbl,
   )
 }
 
+#' Write the HPT MRF manifest and failure log to disk
+#'
+#' Writes `resolution$manifest` to a canonical `hpt_mrf_manifest.csv`
+#' and a timestamped audit copy, and `resolution$failures` to a
+#' timestamped failure log.
+#'
+#' @param resolution List with `manifest` and `failures` tibbles, as
+#'   returned by [resolve_hpt_manifest()].
+#' @param config_dir Directory to write the files into; created if it
+#'   does not exist.
+#' @return A list with `manifest_path`, `manifest_audit_path`, and
+#'   `failure_path`, the paths written.
 #' @export
 write_hpt_resolution_files <- function(
     resolution,
@@ -918,6 +1175,14 @@ write_hpt_resolution_files <- function(
   )
 }
 
+#' Location of the TPAFS historical HPT URL index
+#'
+#' This index is used only to seed hospital website-domain guesses
+#' ([build_hpt_domain_hints()]), not as a source of prices.
+#'
+#' @return One-row tibble with `source`, `source_page`, and
+#'   `download_url` columns describing the TPAFS transparency-data
+#'   `machine_readable_links.csv` resource.
 #' @export
 hpt_historical_index_resource <- function() {
   tibble::tibble(
@@ -934,6 +1199,18 @@ hpt_historical_index_resource <- function() {
   )
 }
 
+#' Download the TPAFS historical HPT URL index
+#'
+#' Downloads the CSV at [hpt_historical_index_resource()], validates
+#' that it has the columns this pipeline depends on, and writes a
+#' provenance record (source, local path, sha256, download timestamp)
+#' alongside it.
+#'
+#' @param directory Directory to save the downloaded CSV and its
+#'   provenance file into; created if it does not exist.
+#' @return Tibble of the downloaded index, all columns read as
+#'   character, with at least `ccn`, `machine_readable_page`,
+#'   `supplemental_url`, and `machine_readable_url` columns.
 #' @export
 download_hpt_historical_index <- function(
     directory = "data-raw/hpt/index") {
@@ -1014,6 +1291,11 @@ download_hpt_historical_index <- function(
   index_tbl
 }
 
+#' Extract the lowercase hostname from an http(s) URL
+#'
+#' @param url Character scalar URL.
+#' @return Character scalar lowercase hostname, or `NA_character_` if
+#'   `url` is `NA`, blank, or does not match `^https?://`.
 #' @export
 extract_url_hostname <- function(url) {
   if (base::is.na(url) || !base::nzchar(url)) {
@@ -1037,6 +1319,23 @@ extract_url_hostname <- function(url) {
   stringr::str_to_lower(hostname)
 }
 
+#' Build per-hospital website-domain hints from the historical HPT index
+#'
+#' For each CMS certification number (`ccn`) in `index_tbl`, extracts a
+#' hostname from `machine_readable_page`, `supplemental_url`, and
+#' `machine_readable_url` (via [extract_url_hostname()]) and coalesces
+#' them in that priority order to pick one `website_domain` hint per
+#' hospital, recording which column it came from in `domain_source`.
+#' Rows with a blank `ccn` or no derivable hostname are dropped, and
+#' only the first row per `ccn` is kept.
+#'
+#' @param index_tbl Tibble with `ccn`, `machine_readable_page`,
+#'   `supplemental_url`, and `machine_readable_url` columns, e.g. from
+#'   [download_hpt_historical_index()].
+#' @return Tibble with one row per `ccn`, columns `facility_id`,
+#'   `website_domain`, and `domain_source` (one of
+#'   `"historical_machine_readable_page"`,
+#'   `"historical_supplemental_url"`, or `"historical_mrf_host"`).
 #' @export
 build_hpt_domain_hints <- function(index_tbl) {
   base::message("Building HPT domain hints by CMS certification number.")
@@ -1089,6 +1388,23 @@ build_hpt_domain_hints <- function(index_tbl) {
     )
 }
 
+#' Prefill blank website domains from the historical HPT index
+#'
+#' Reads the domain file at `domain_path`, builds historical hints via
+#' [build_hpt_domain_hints()], and fills in `website_domain` (and
+#' `domain_source`) for any row where `website_domain` is currently
+#' blank, leaving rows that already have a domain untouched (their
+#' `domain_source` is set to `"manual"` if not already populated).
+#' Writes the updated table back to `domain_path`.
+#'
+#' @param domain_path Path to an existing HPT domain CSV (e.g. from
+#'   [write_hpt_sample_files()]) with `facility_id` and `website_domain`
+#'   columns.
+#' @param index_tbl Tibble of the historical HPT URL index, e.g. from
+#'   [download_hpt_historical_index()].
+#' @return Tibble of the updated domain file (also written to
+#'   `domain_path`), with `website_domain` and `domain_source` columns
+#'   filled in where hints were available.
 #' @export
 prefill_hpt_domains <- function(domain_path,
                                 index_tbl) {
@@ -1164,6 +1480,14 @@ prefill_hpt_domains <- function(domain_path,
   updated_tbl
 }
 
+#' Read a frozen HPT hospital sample from disk
+#'
+#' @param path Path to a frozen HPT sample CSV, e.g.
+#'   `config/hpt_hospital_sample.csv`.
+#' @return Tibble of the sample, all columns read as character, with at
+#'   least `facility_id`, `facility_name`, `citytown`, `state`,
+#'   `census_region`, and `ownership_group` columns. Errors if any of
+#'   those required columns is missing.
 #' @export
 read_hpt_sample <- function(path) {
   base::message("Reading frozen HPT hospital sample: ", path)
@@ -1198,6 +1522,25 @@ read_hpt_sample <- function(path) {
   sample_tbl
 }
 
+#' Load the frozen HPT sample, or create one if none exists
+#'
+#' If `config_dir/hpt_hospital_sample.csv` already exists and `resample`
+#' is `FALSE`, reuses it via [read_hpt_sample()]; otherwise draws a new
+#' sample via [sample_hpt_hospitals()]. Either way, (re-)writes the
+#' sample files via [write_hpt_sample_files()] without overwriting an
+#' existing domain file.
+#'
+#' @param hospital_tbl Tibble of hospitals to sample from if a new
+#'   sample is needed, e.g. from [download_cms_hospital_frame()].
+#' @param config_dir Directory the frozen sample and domain files live
+#'   in (and are written to).
+#' @param per_stratum Number of hospitals per stratum, passed to
+#'   [sample_hpt_hospitals()] if resampling.
+#' @param seed Seed passed to [sample_hpt_hospitals()] if resampling.
+#' @param resample If `TRUE`, draw a new sample even if a frozen one
+#'   already exists.
+#' @return A list with `sample` (the sample tibble) and `files` (the
+#'   list of written file paths from [write_hpt_sample_files()]).
 #' @export
 load_or_create_hpt_sample <- function(
     hospital_tbl,

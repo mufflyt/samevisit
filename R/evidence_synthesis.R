@@ -34,6 +34,10 @@ summarize_evidence_tiers <- function(model_parameters) {
   tier_summary
 }
 
+#' Format a number as a whole-dollar amount
+#'
+#' @param x Numeric vector to format.
+#' @return Character vector of dollar-formatted strings (e.g. `"$1,234"`).
 #' @export
 format_cost <- function(x) {
   scales::dollar(
@@ -43,6 +47,10 @@ format_cost <- function(x) {
   )
 }
 
+#' Format a proportion as a percentage
+#'
+#' @param x Numeric vector to format, on a 0-1 scale.
+#' @return Character vector of percent-formatted strings (e.g. `"12.3%"`).
 #' @export
 format_percent <- function(x) {
   scales::percent(
@@ -51,6 +59,19 @@ format_percent <- function(x) {
   )
 }
 
+#' Compose a one-sentence summary of an external cost-validation comparison
+#'
+#' Describes the direction (higher/lower/the same "in Colorado") and
+#' magnitude of `comparison_tbl$absolute_difference[[1]]` over the given
+#' year range, with an optional p-value.
+#'
+#' @param comparison_tbl Tibble with an `absolute_difference` column; only
+#'   the first row/element is used.
+#' @param start_year First year of the comparison period.
+#' @param end_year Last year of the comparison period.
+#' @param p_value Numeric p-value to report, or `NA_real_` (default) to
+#'   report that no p-value was estimated.
+#' @return Character scalar, a complete sentence describing the comparison.
 #' @export
 format_external_validation_sentence <- function(
     comparison_tbl,

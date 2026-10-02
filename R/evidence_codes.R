@@ -27,6 +27,11 @@ sampling_codebook <- function() {
   )
 }
 
+#' Look up the billing code(s) for one or more clinical concepts
+#'
+#' @param concept Character vector of concept names to match against
+#'   [sampling_codebook()]'s `concept` column.
+#' @return Character vector of unique matching HCPCS/CPT codes.
 #' @export
 sampling_code_vector <- function(concept) {
   sampling_codebook() |>

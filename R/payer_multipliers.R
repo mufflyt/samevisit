@@ -31,6 +31,12 @@ payer_multiplier_codes <- function() {
   codes
 }
 
+#' Payer types each reimbursement input's multiplier is computed for
+#'
+#' Parallel to [payer_multiplier_codes()]: the payer types scanned when
+#' refreshing or building `payer_multiplier_<payer>_<parameter>` rows.
+#'
+#' @return Character vector: `"medicaid"`, `"commercial"`.
 #' @export
 payer_multiplier_payers <- function() {
   base::c("medicaid", "commercial")

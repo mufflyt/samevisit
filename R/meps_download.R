@@ -1,3 +1,8 @@
+#' Registry of 2024 MEPS public-use file download URLs
+#'
+#' @return Tibble with columns `key` (`"office"` or `"jobs"`),
+#'   `source_page` (the AHRQ download page URL), and `download_url` (the
+#'   ZIP file URL).
 #' @export
 meps_2024_resources <- function() {
   base::message("Building 2024 MEPS public-resource registry.")
@@ -27,6 +32,18 @@ meps_2024_resources <- function() {
   )
 }
 
+#' Download a public file to a local destination
+#'
+#' Creates the destination directory if needed. Skips the download (and
+#' returns the existing file) if `destination` already exists and
+#' `overwrite` is `FALSE`.
+#'
+#' @param url URL to download.
+#' @param destination Local file path to save the download to.
+#' @param overwrite If `TRUE`, re-download even when `destination` already
+#'   exists.
+#' @return `destination`, invisibly on the early-exit path, after the file
+#'   exists on disk. Errors if the download does not create the file.
 #' @export
 download_public_file <- function(url,
                                  destination,
@@ -66,6 +83,10 @@ download_public_file <- function(url,
   destination
 }
 
+#' Compute the SHA-256 checksum of a file
+#'
+#' @param path Path to the file to hash. Errors if the file does not exist.
+#' @return Character scalar: the hex-encoded SHA-256 hash.
 #' @export
 sha256_file <- function(path) {
   if (!base::file.exists(path)) {
@@ -80,6 +101,11 @@ sha256_file <- function(path) {
   base::as.character(hash_raw)
 }
 
+#' Required columns for a 2024 MEPS public-use file
+#'
+#' @param file_type Which MEPS file: `"office"` or `"jobs"` (matched via
+#'   [base::match.arg()]).
+#' @return Character vector of required column names for `file_type`.
 #' @export
 meps_required_columns <- function(file_type) {
   file_type <- base::match.arg(
@@ -109,6 +135,13 @@ meps_required_columns <- function(file_type) {
   )
 }
 
+#' Validate that a MEPS table has its required columns
+#'
+#' @param meps_tbl Tibble/data frame to check.
+#' @param file_type Which MEPS file `meps_tbl` is from: `"office"` or
+#'   `"jobs"` (see [meps_required_columns()]).
+#' @return `TRUE` if all required columns are present. Errors listing the
+#'   missing columns otherwise.
 #' @export
 validate_meps_columns <- function(meps_tbl,
                                   file_type) {
@@ -137,6 +170,14 @@ validate_meps_columns <- function(meps_tbl,
   TRUE
 }
 
+#' Locate the single XLSX workbook in a directory
+#'
+#' Searches recursively, ignoring Excel's temporary lock files (which
+#' start with `~$`).
+#'
+#' @param directory Directory to search.
+#' @return Path to the single matching `.xlsx` file. Errors if zero or
+#'   more than one match is found.
 #' @export
 find_single_xlsx <- function(directory) {
   candidates <- base::list.files(
@@ -164,6 +205,16 @@ find_single_xlsx <- function(directory) {
   candidates[[1]]
 }
 
+#' Extract a MEPS XLSX workbook from its downloaded ZIP
+#'
+#' Skips extraction (and returns the existing workbook) if `extract_dir`
+#' already contains exactly one `.xlsx` file and `overwrite` is `FALSE`.
+#'
+#' @param zip_path Path to the downloaded ZIP archive.
+#' @param extract_dir Directory to extract into (created if needed).
+#' @param overwrite If `TRUE`, re-extract even when a workbook already
+#'   exists in `extract_dir`.
+#' @return Path to the extracted (or pre-existing) `.xlsx` workbook.
 #' @export
 extract_meps_xlsx <- function(zip_path,
                               extract_dir,
@@ -200,6 +251,14 @@ extract_meps_xlsx <- function(zip_path,
   xlsx_path
 }
 
+#' Validate that a MEPS workbook has its required columns
+#'
+#' Reads only the header row of the workbook before checking it.
+#'
+#' @param path Path to the MEPS `.xlsx` workbook.
+#' @param file_type Which MEPS file `path` is: `"office"` or `"jobs"` (see
+#'   [meps_required_columns()]).
+#' @return `TRUE` if all required columns are present; errors otherwise.
 #' @export
 validate_meps_xlsx <- function(path,
                                file_type) {
@@ -216,6 +275,21 @@ validate_meps_xlsx <- function(path,
   )
 }
 
+#' Download, extract, and validate the 2024 MEPS public-use files
+#'
+#' Downloads the office-visit and jobs 2024 MEPS ZIP files (see
+#' [meps_2024_resources()]) into per-resource subdirectories of
+#' `directory`, extracts each to an XLSX workbook, validates each
+#' workbook's required columns, and writes a provenance CSV recording the
+#' download URLs, file paths, SHA-256 checksums, and download timestamp.
+#'
+#' @param directory Root directory to download and extract files into.
+#' @param overwrite If `TRUE`, re-download and re-extract even when files
+#'   already exist.
+#' @return Tibble with one row per resource and columns `key`,
+#'   `source_page`, `download_url`, `zip_path`, `xlsx_path`, `sha256`,
+#'   `downloaded_at`. Also writes a timestamped provenance CSV to
+#'   `directory` as a side effect.
 #' @export
 download_meps_2024 <- function(
     directory = "data-raw/meps/2024",

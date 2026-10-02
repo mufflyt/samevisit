@@ -1,3 +1,9 @@
+#' CPT/HCPCS codes for the conservative "base" screening colonoscopy definition
+#'
+#' A narrower subset of `colonoscopy_setting_codes()` used for sensitivity
+#' checks, restricted to the base screening/diagnostic colonoscopy codes.
+#'
+#' @return Character vector of CPT/HCPCS codes.
 #' @export
 colonoscopy_base_codes <- function() {
   base::c(
@@ -7,6 +13,12 @@ colonoscopy_base_codes <- function() {
   )
 }
 
+#' CPT/HCPCS codes defining the colonoscopy setting cohort
+#'
+#' All CPT and HCPCS codes used to identify colonoscopy service lines in the
+#' CMS physician/supplier data.
+#'
+#' @return Character vector of CPT/HCPCS codes.
 #' @export
 colonoscopy_setting_codes <- function() {
   base::c(
@@ -25,6 +37,19 @@ colonoscopy_setting_codes <- function() {
 }
 
 
+#' Find the first matching CMS column name among candidates
+#'
+#' CMS physician/supplier PUF column names change across release years
+#' (e.g. "Rndrng_NPI" vs "Rndrng_Prvdr_NPI"). This resolves which candidate
+#' name is actually present in a given table.
+#'
+#' @param table_names Character vector of column names in the target table.
+#' @param candidates Character vector of candidate column names to try, in
+#'   priority order.
+#' @param required Logical; if `TRUE` (default), error when no candidate is
+#'   found. If `FALSE`, return `NA_character_` instead.
+#' @return Character scalar: the first matching column name, or
+#'   `NA_character_` if none match and `required` is `FALSE`.
 #' @export
 resolve_cms_column <- function(table_names,
                                candidates,
@@ -45,6 +70,15 @@ resolve_cms_column <- function(table_names,
   NA_character_
 }
 
+#' Pull a column from a CMS table, tolerating a missing column
+#'
+#' @param cms_tbl Tibble of CMS data.
+#' @param column_name Character scalar naming the column to pull, or `NA`
+#'   if the column was not found in `cms_tbl`.
+#' @param default Value to recycle to `nrow(cms_tbl)` when `column_name` is
+#'   `NA`.
+#' @return Vector of length `nrow(cms_tbl)`: the named column, or `default`
+#'   recycled if `column_name` is `NA`.
 #' @export
 pull_cms_column <- function(cms_tbl,
                             column_name,
@@ -56,6 +90,12 @@ pull_cms_column <- function(cms_tbl,
   cms_tbl[[column_name]]
 }
 
+#' Classify a RUCA code into a rurality group
+#'
+#' @param ruca_code Numeric or character RUCA (Rural-Urban Commuting Area)
+#'   code; coerced to numeric.
+#' @return Character vector of the same length as `ruca_code`, one of
+#'   "Metropolitan", "Micropolitan", "Small town", "Rural", or "Unknown".
 #' @export
 classify_ruca_group <- function(ruca_code) {
   numeric_code <- base::suppressWarnings(
@@ -72,6 +112,10 @@ classify_ruca_group <- function(ruca_code) {
   )
 }
 
+#' Detect whether a provider type string denotes an ambulatory surgical center
+#'
+#' @param provider_type Character vector of CMS provider type descriptions.
+#' @return Logical vector of the same length as `provider_type`.
 #' @export
 is_asc_provider_type <- function(provider_type) {
   normalized <- stringr::str_to_lower(
@@ -84,6 +128,25 @@ is_asc_provider_type <- function(provider_type) {
   )
 }
 
+#' Standardize a raw CMS physician/supplier table to colonoscopy service rows
+#'
+#' Resolves the CMS PUF's year-varying column names, pulls out the columns
+#' needed for colonoscopy setting analysis, filters to colonoscopy
+#' CPT/HCPCS codes (`colonoscopy_setting_codes()`), and derives
+#' `claim_role`, `place_group`, and `ruca_group`.
+#'
+#' @param cms_tbl Tibble of raw CMS "Medicare Physician & Other
+#'   Practitioners - by Provider and Service" rows for one year.
+#' @param data_year Integer or character year the rows in `cms_tbl` belong
+#'   to; stored as the `year` column.
+#' @return Tibble with one row per provider-service line, with columns
+#'   `year`, `provider_npi`, `provider_name`, `provider_type`,
+#'   `entity_code`, `street1`, `city`, `state`, `zip5`, `ruca`,
+#'   `ruca_description`, `hcpcs_code`, `place_of_service`, `services`,
+#'   `beneficiaries`, `beneficiary_day_services`, `submitted_charge`,
+#'   `allowed_amount`, `payment_amount`, `claim_role`
+#'   ("asc_facility"/"professional"), `place_group`
+#'   ("Facility"/"Nonfacility"/"Unknown"), and `ruca_group`.
 #' @export
 standardize_physician_colonoscopy <- function(cms_tbl,
                                                data_year) {
@@ -279,6 +342,14 @@ standardize_physician_colonoscopy <- function(cms_tbl,
   standardized_tbl
 }
 
+#' Summarize the mix of colonoscopy CPT/HCPCS codes by place of service
+#'
+#' @param physician_tbl Tibble of standardized colonoscopy rows, as
+#'   returned by `standardize_physician_colonoscopy()`.
+#' @return Tibble with one row per `year`/`hcpcs_code`/`place_group`,
+#'   including `observed_services`, `code_total_services`, and
+#'   `service_share` (share of each code's services falling in that place
+#'   group).
 #' @export
 summarize_colonoscopy_code_mix <- function(physician_tbl) {
   base::message("Summarizing colonoscopy-coded service mix.")
@@ -309,6 +380,18 @@ summarize_colonoscopy_code_mix <- function(physician_tbl) {
     dplyr::ungroup()
 }
 
+#' Summarize place-of-service share using the conservative base-code definition
+#'
+#' Sensitivity check that repeats the facility-vs-nonfacility share
+#' calculation restricted to `colonoscopy_base_codes()`, using
+#' beneficiary-day services (falling back to services) as the encounter
+#' proxy.
+#'
+#' @param physician_tbl Tibble of standardized colonoscopy rows, as
+#'   returned by `standardize_physician_colonoscopy()`.
+#' @return Tibble with one row per `year`/`place_group`, including
+#'   `observed_encounter_proxy`, `total_observed_encounter_proxy`, and
+#'   `service_share`.
 #' @export
 summarize_base_code_place <- function(physician_tbl) {
   base::message(
@@ -355,6 +438,12 @@ summarize_base_code_place <- function(physician_tbl) {
 }
 
 
+#' Weighted standard deviation
+#'
+#' @param x Numeric vector of values.
+#' @param weights Numeric vector of weights, same length as `x`.
+#' @return Numeric scalar weighted standard deviation, or `NA_real_` if
+#'   fewer than two finite, positively-weighted observations remain.
 #' @export
 weighted_sd <- function(x,
                         weights) {
@@ -381,6 +470,13 @@ weighted_sd <- function(x,
   base::sqrt(variance)
 }
 
+#' Summarize colonoscopy services by facility versus nonfacility place of service
+#'
+#' @param physician_tbl Tibble of standardized colonoscopy rows, as
+#'   returned by `standardize_physician_colonoscopy()`.
+#' @return Tibble with one row per `year`/`place_group`, including
+#'   `observed_services`, `n_provider_service_rows`,
+#'   `total_observed_services`, and `service_share`.
 #' @export
 summarize_colonoscopy_place <- function(physician_tbl) {
   base::message(
@@ -422,6 +518,13 @@ summarize_colonoscopy_place <- function(physician_tbl) {
   summary_tbl
 }
 
+#' Summarize colonoscopy setting share by provider state
+#'
+#' @param physician_tbl Tibble of standardized colonoscopy rows, as
+#'   returned by `standardize_physician_colonoscopy()`.
+#' @return Tibble with one row per `year`/`state`/`place_group`, including
+#'   `observed_services`, `total_observed_services`, and `service_share`
+#'   (share within that state-year).
 #' @export
 summarize_colonoscopy_state <- function(physician_tbl) {
   base::message("Summarizing colonoscopy setting by provider state.")
@@ -460,6 +563,13 @@ summarize_colonoscopy_state <- function(physician_tbl) {
     dplyr::ungroup()
 }
 
+#' Summarize colonoscopy setting share by provider RUCA rurality group
+#'
+#' @param physician_tbl Tibble of standardized colonoscopy rows, as
+#'   returned by `standardize_physician_colonoscopy()`.
+#' @return Tibble with one row per `year`/`ruca_group`/`place_group`,
+#'   including `observed_services`, `total_observed_services`, and
+#'   `service_share` (share within that rurality-year).
 #' @export
 summarize_colonoscopy_rurality <- function(physician_tbl) {
   base::message("Summarizing colonoscopy setting by provider RUCA group.")
@@ -496,6 +606,13 @@ summarize_colonoscopy_rurality <- function(physician_tbl) {
     dplyr::ungroup()
 }
 
+#' Summarize colonoscopy services by provider specialty
+#'
+#' @param physician_tbl Tibble of standardized colonoscopy rows, as
+#'   returned by `standardize_physician_colonoscopy()`.
+#' @return Tibble with one row per `year`/`provider_type`, including
+#'   `observed_services`, `unique_providers`, `total_observed_services`,
+#'   and `service_share`, sorted by year and descending observed services.
 #' @export
 summarize_colonoscopy_specialty <- function(physician_tbl) {
   base::message("Summarizing colonoscopy services by provider specialty.")
@@ -532,6 +649,13 @@ summarize_colonoscopy_specialty <- function(physician_tbl) {
     )
 }
 
+#' Summarize Medicare allowed amounts for colonoscopy services
+#'
+#' @param physician_tbl Tibble of standardized colonoscopy rows, as
+#'   returned by `standardize_physician_colonoscopy()`.
+#' @return Tibble with one row per `year`/`place_group`, including
+#'   `observed_services`, `weighted_mean_allowed`, `weighted_sd_allowed`,
+#'   `median_allowed`, `p25_allowed`, and `p75_allowed`.
 #' @export
 summarize_colonoscopy_allowed <- function(physician_tbl) {
   base::message("Summarizing colonoscopy Medicare allowed amounts.")
@@ -580,6 +704,16 @@ summarize_colonoscopy_allowed <- function(physician_tbl) {
     )
 }
 
+#' Summarize provider-level concentration of colonoscopy services
+#'
+#' Computes the Herfindahl-Hirschman Index (HHI) and top-N provider service
+#' shares for professional colonoscopy claims, by year.
+#'
+#' @param physician_tbl Tibble of standardized colonoscopy rows, as
+#'   returned by `standardize_physician_colonoscopy()`.
+#' @return Tibble with one row per `year`, including `unique_providers`,
+#'   `total_observed_services`, `hhi` (0-1 scale), `hhi_10000` (0-10,000
+#'   scale), `top_1_share`, `top_10_share`, and `top_50_share`.
 #' @export
 summarize_colonoscopy_concentration <- function(physician_tbl) {
   base::message("Calculating colonoscopy provider concentration.")
@@ -629,6 +763,14 @@ summarize_colonoscopy_concentration <- function(physician_tbl) {
     )
 }
 
+#' Build a directory of observed ambulatory surgical centers billing colonoscopy
+#'
+#' @param physician_tbl Tibble of standardized colonoscopy rows, as
+#'   returned by `standardize_physician_colonoscopy()`.
+#' @return Tibble with one row per `year`/ASC provider (identified by NPI,
+#'   name, and address fields), including `observed_services` and
+#'   `weighted_mean_allowed`, sorted by year and descending observed
+#'   services.
 #' @export
 build_asc_colonoscopy_directory <- function(physician_tbl) {
   base::message("Building observed ASC colonoscopy directory.")
@@ -663,6 +805,21 @@ build_asc_colonoscopy_directory <- function(physician_tbl) {
     )
 }
 
+#' Estimate the ASC share of facility-setting colonoscopy services
+#'
+#' The public CMS physician/supplier PUF does not separately break out
+#' facility services by facility type, so this estimates the ASC share of
+#' observed facility-setting services from the directly billed ASC rows,
+#' with the remainder treated as a residual "other facility" share.
+#'
+#' @param physician_tbl Tibble of standardized colonoscopy rows, as
+#'   returned by `standardize_physician_colonoscopy()`.
+#' @return Tibble with one row per `year`, including
+#'   `professional_facility_services`, `asc_observed_services`,
+#'   `residual_other_facility_services`, `asc_share_raw`,
+#'   `asc_share_of_facility` (capped at 1), and `suppression_mismatch`
+#'   (`TRUE` if observed ASC services exceed observed facility services,
+#'   indicating a data suppression artifact).
 #' @export
 estimate_facility_type_share <- function(physician_tbl) {
   base::message(
@@ -725,6 +882,16 @@ estimate_facility_type_share <- function(physician_tbl) {
     )
 }
 
+#' Decompose observed colonoscopy services into office, ASC, and residual facility settings
+#'
+#' @param physician_tbl Tibble of standardized colonoscopy rows, as
+#'   returned by `standardize_physician_colonoscopy()`.
+#' @param data_year Year to filter `physician_tbl` to before decomposing.
+#' @return Tibble with one row per `setting` ("Office/nonfacility", "ASC",
+#'   "Other facility residual") for `data_year`, including
+#'   `observed_services`, `suppression_mismatch` (`TRUE` if observed ASC
+#'   services exceed observed facility services), `total_observed_services`,
+#'   and `observed_share`.
 #' @export
 decompose_colonoscopy_observed_settings <- function(physician_tbl,
                                                     data_year) {
@@ -797,6 +964,15 @@ decompose_colonoscopy_observed_settings <- function(physician_tbl,
 }
 
 
+#' Fit a linear trend of facility-setting share over time
+#'
+#' @param place_tbl Tibble with `place_group`, `year`, `service_share`, and
+#'   `total_observed_services` columns, as returned by
+#'   `summarize_colonoscopy_place()`.
+#' @return A one-row tibble with `first_year`, `last_year`, `first_share`,
+#'   `last_share`, `annual_change_pp` (slope in percentage points per
+#'   year), `p_value`, and `total_services`. Errors if fewer than three
+#'   years of facility-share data are available.
 #' @export
 fit_colonoscopy_facility_trend <- function(place_tbl) {
   base::message("Fitting facility-share trend across available years.")
@@ -835,6 +1011,13 @@ fit_colonoscopy_facility_trend <- function(place_tbl) {
   )
 }
 
+#' Format a colonoscopy facility-share trend as a reporting sentence
+#'
+#' @param trend_tbl One-row tibble as returned by
+#'   `fit_colonoscopy_facility_trend()`.
+#' @return Character scalar summarizing the trend's direction, start/end
+#'   shares, annual change, p-value, and (if present) total observed
+#'   services.
 #' @export
 format_colonoscopy_trend_sentence <- function(trend_tbl) {
   direction <- dplyr::case_when(
@@ -901,6 +1084,12 @@ format_colonoscopy_trend_sentence <- function(trend_tbl) {
   )
 }
 
+#' Plot colonoscopy place-of-service share over time
+#'
+#' @param place_tbl Tibble with `year`, `service_share`, and `place_group`
+#'   columns, as returned by `summarize_colonoscopy_place()`.
+#' @return A ggplot object: a line-and-point chart of service share by
+#'   year, one line per place-of-service group.
 #' @export
 plot_colonoscopy_place_trend <- function(place_tbl) {
   base::message("Creating colonoscopy place-of-service trend figure.")
@@ -928,6 +1117,14 @@ plot_colonoscopy_place_trend <- function(place_tbl) {
     ggplot2::theme_minimal()
 }
 
+#' Plot facility-setting colonoscopy share by provider state for one year
+#'
+#' @param state_tbl Tibble with `year`, `place_group`, `state`, and
+#'   `service_share` columns, as returned by
+#'   `summarize_colonoscopy_state()`.
+#' @param data_year Year to filter `state_tbl` to before plotting.
+#' @return A ggplot object: a dot plot of facility service share by
+#'   state, states ordered by ascending share.
 #' @export
 plot_state_facility_share <- function(state_tbl,
                                       data_year) {
@@ -969,6 +1166,14 @@ plot_state_facility_share <- function(state_tbl,
     ggplot2::theme_minimal()
 }
 
+#' Save a colonoscopy summary table as a timestamped CSV
+#'
+#' @param table_tbl Tibble to write to disk.
+#' @param directory Directory to write into; created recursively if it
+#'   does not exist.
+#' @param stem File name stem; the saved file is
+#'   `<stem>_<YYYYMMDD_HHMMSS>.csv`.
+#' @return Invisibly, the character path the table was written to.
 #' @export
 save_colonoscopy_table <- function(table_tbl,
                                    directory,
@@ -992,6 +1197,16 @@ save_colonoscopy_table <- function(table_tbl,
   base::invisible(path)
 }
 
+#' Save a colonoscopy figure as a timestamped PNG
+#'
+#' @param figure_obj ggplot object to save.
+#' @param directory Directory to write into; created recursively if it
+#'   does not exist.
+#' @param stem File name stem; the saved file is
+#'   `<stem>_<YYYYMMDD_HHMMSS>.png`.
+#' @param width Figure width in inches, passed to `ggplot2::ggsave()`.
+#' @param height Figure height in inches, passed to `ggplot2::ggsave()`.
+#' @return Invisibly, the character path the figure was written to.
 #' @export
 save_colonoscopy_figure <- function(figure_obj,
                                     directory,
@@ -1023,6 +1238,13 @@ save_colonoscopy_figure <- function(figure_obj,
   base::invisible(path)
 }
 
+#' Find the most recent cached CMS colonoscopy extract for a year
+#'
+#' @param cache_dir Directory to search for cached files.
+#' @param data_year Year the cached file name must match.
+#' @return Character scalar path to the most recent matching cache file
+#'   (by timestamp in the file name), or `NA_character_` if `cache_dir`
+#'   does not exist or no matching file is found.
 #' @export
 latest_colonoscopy_cache_path <- function(cache_dir,
                                           data_year) {
@@ -1049,6 +1271,13 @@ latest_colonoscopy_cache_path <- function(cache_dir,
   base::sort(paths, decreasing = TRUE)[[1]]
 }
 
+#' Save standardized CMS colonoscopy rows as a timestamped cache CSV
+#'
+#' @param colonoscopy_tbl Tibble of standardized colonoscopy rows to cache.
+#' @param cache_dir Directory to write into; created recursively if it
+#'   does not exist.
+#' @param data_year Year the rows belong to; used in the cache file name.
+#' @return Invisibly, the character path the cache file was written to.
 #' @export
 save_colonoscopy_cache <- function(colonoscopy_tbl,
                                    cache_dir,
@@ -1078,6 +1307,22 @@ save_colonoscopy_cache <- function(colonoscopy_tbl,
   base::invisible(path)
 }
 
+#' Fetch (or load cached) standardized CMS colonoscopy rows for one year
+#'
+#' Reads from the most recent matching cache file when available and
+#' `use_cache` is `TRUE`; otherwise queries the CMS data API for each
+#' colonoscopy HCPCS code, standardizes the result with
+#' `standardize_physician_colonoscopy()`, and writes a fresh cache file.
+#'
+#' @param data_year Year to fetch.
+#' @param title_pattern Character scalar CMS dataset title pattern to
+#'   search for; defaults to the "Medicare Physician & Other Practitioners
+#'   - by Provider and Service" dataset title when `NULL`.
+#' @param cache_dir Directory to read/write the cache file in.
+#' @param use_cache Logical; if `TRUE` (default), return a cached extract
+#'   when one exists instead of re-fetching from the CMS API.
+#' @return Tibble of standardized colonoscopy provider-service rows for
+#'   `data_year` (cached, read from CSV, or freshly standardized).
 #' @export
 fetch_colonoscopy_physician_year <- function(
     data_year,
@@ -1145,6 +1390,14 @@ fetch_colonoscopy_physician_year <- function(
   standardized_tbl
 }
 
+#' Fetch standardized CMS colonoscopy rows across multiple years
+#'
+#' @param years Integer vector of years to fetch; defaults to `2019:2024`.
+#' @param cache_dir Directory to read/write per-year cache files in.
+#' @param use_cache Logical; if `TRUE` (default), reuse cached per-year
+#'   extracts when available instead of re-fetching from the CMS API.
+#' @return Tibble of standardized colonoscopy provider-service rows for
+#'   all requested years, row-bound together.
 #' @export
 fetch_colonoscopy_physician_years <- function(
     years = 2019:2024,

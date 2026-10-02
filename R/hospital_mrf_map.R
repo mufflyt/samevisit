@@ -95,8 +95,15 @@ build_hospital_mrf_points <- function(
 
 #' Static jittered point map of hospitals with usable MRF-derived payer-rate data
 #'
+#' Needs the `maps` and `mapproj` packages installed -- `ggplot2::map_data()`
+#' and `ggplot2::coord_map()` call into them internally, even though no
+#' function from either is called directly in this file, which is why
+#' they're imported explicitly here rather than left undeclared.
+#'
 #' @param hospital_points Tibble from [build_hospital_mrf_points()].
 #' @return A `ggplot` object.
+#' @importFrom maps map
+#' @importFrom mapproj mapproject
 #' @export
 plot_hospital_mrf_map <- function(hospital_points) {
   us_states <- ggplot2::map_data("state")

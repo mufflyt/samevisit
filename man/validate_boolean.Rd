@@ -7,6 +7,8 @@
 validate_boolean(logical_value, value_name)
 }
 \arguments{
+\item{logical_value}{Value to check.}
+
 \item{value_name}{Character scalar used in the error message.}
 }
 \value{

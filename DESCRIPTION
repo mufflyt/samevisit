@@ -35,11 +35,9 @@ Imports:
     readxl,
     stringr,
     openssl,
-    DiagrammeR,
-    DiagrammeRsvg,
-    rsvg,
     maps,
-    mapproj
+    mapproj,
+    withr
 Suggests:
     testthat
 URL: https://github.com/mufflyt/samevisit, https://github.com/mufflyt/emb_colonoscopy

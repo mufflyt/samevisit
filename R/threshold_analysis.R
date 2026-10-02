@@ -122,6 +122,8 @@ metric_dnc_dominated <- function(strategy_costs) {
 #' alternative?
 #'
 #' @inheritParams find_parameter_threshold
+#' @param search_upper Numeric scalar, the upper bound of the search
+#'   interval (the lower bound is fixed at 0).
 #' @return A one-row tibble, see [find_parameter_threshold()].
 #' @export
 threshold_combined_added_minutes <- function(
@@ -161,6 +163,8 @@ threshold_office_failure_probability <- function(
 #' before it is dominated by both other strategies?
 #'
 #' @inheritParams find_parameter_threshold
+#' @param search_upper Numeric scalar, the upper bound of the search
+#'   interval (the lower bound is fixed at 0).
 #' @return A one-row tibble, see [find_parameter_threshold()].
 #' @export
 threshold_dnc_dominated_facility_fee <- function(
@@ -181,6 +185,8 @@ threshold_dnc_dominated_facility_fee <- function(
 #' strategy while it retains a cost advantage over standalone office EMB?
 #'
 #' @inheritParams find_parameter_threshold
+#' @param search_upper Numeric scalar, the upper bound of the search
+#'   interval (the lower bound is fixed at 0).
 #' @return A one-row tibble, see [find_parameter_threshold()].
 #' @export
 threshold_coordination_cost_ceiling <- function(

@@ -55,6 +55,7 @@ validate_positive <- function(numeric_value, value_name) {
 
 #' Validate a single logical scalar
 #'
+#' @param logical_value Value to check.
 #' @inheritParams validate_probability
 #' @return Invisibly `TRUE` if valid; otherwise raises an error.
 #' @export

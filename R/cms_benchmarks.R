@@ -1,3 +1,12 @@
+#' Fall back to a default when a value is NULL or empty
+#'
+#' Used to safely read possibly-missing fields out of parsed CMS JSON, where
+#' a missing key comes back as `NULL` or a zero-length vector rather than
+#' raising an error.
+#'
+#' @param value Value to test.
+#' @param fallback Value to return if `value` is `NULL` or has length zero.
+#' @return `value` unchanged, or `fallback` if `value` is `NULL`/empty.
 #' @export
 cms_or_else <- function(value,
                         fallback) {
@@ -8,6 +17,12 @@ cms_or_else <- function(value,
   value
 }
 
+#' Extract the dataset version UUID from a CMS distribution URL
+#'
+#' @param download_url Character scalar, a CMS `accessURL`/download URL of
+#'   the form `.../dataset/<uuid>/data...`.
+#' @return Character scalar, the extracted UUID; errors if the URL does not
+#'   match the expected pattern.
 #' @export
 cms_distribution_uuid <- function(download_url) {
   matched <- stringr::str_match(
@@ -27,6 +42,23 @@ cms_distribution_uuid <- function(download_url) {
   uuid
 }
 
+#' Resolve the API distribution UUID for a CMS dataset and year
+#'
+#' Finds the single dataset in a CMS `data.json` catalog whose title matches
+#' `title_pattern`, then finds its single API distribution for `data_year`
+#' (format `"API"`, title/temporal containing the year, and an `accessURL`
+#' under `/data-api/v1/dataset/`). If more than one year-matching
+#' distribution is found and exactly one is annotated `"latest"` in its
+#' description, that one is preferred; otherwise all year-matching
+#' candidates are kept, and the function errors unless exactly one remains.
+#'
+#' @param catalog_payload Parsed JSON (as nested lists) of the CMS
+#'   `data.json` catalog, with a top-level `dataset` field.
+#' @param title_pattern Regular expression (case-insensitive) matched
+#'   against each dataset's `title`.
+#' @param data_year Integer year to match in the distribution's
+#'   title/temporal fields.
+#' @return Character scalar, the resolved version UUID.
 #' @export
 cms_resolve_version_uuid <- function(catalog_payload,
                                      title_pattern,
@@ -151,6 +183,17 @@ cms_resolve_version_uuid <- function(catalog_payload,
   uuid
 }
 
+#' Look up a CMS dataset's API version UUID from the live data.json catalog
+#'
+#' Downloads the CMS Open Data catalog (`https://data.cms.gov/data.json`)
+#' and resolves the version UUID of the dataset/year matching
+#' `title_pattern`/`data_year` via [cms_resolve_version_uuid()]. Requires
+#' network access.
+#'
+#' @param title_pattern Regular expression (case-insensitive) matched
+#'   against candidate dataset titles.
+#' @param data_year Integer year of the dataset release to resolve.
+#' @return Character scalar, the resolved version UUID.
 #' @export
 cms_find_dataset_uuid <- function(title_pattern,
                                   data_year = 2024L) {
@@ -178,6 +221,16 @@ cms_find_dataset_uuid <- function(title_pattern,
   )
 }
 
+#' Normalize a parsed CMS API response into a tibble of rows
+#'
+#' Handles the several shapes a CMS data-api JSON response can take: a
+#' data frame already, a `$data` field that is a data frame, a `$data`
+#' field that is a list of row-records, or a bare top-level list of
+#' row-records.
+#'
+#' @param payload Parsed JSON response from the CMS data-api (as returned
+#'   by `httr2::resp_body_json()`).
+#' @return Tibble of the response's rows.
 #' @export
 cms_extract_rows <- function(payload) {
   if (base::is.data.frame(payload)) {
@@ -241,6 +294,20 @@ validate_cms_filter_field <- function(page_tbl, hcpcs_field) {
   base::invisible(TRUE)
 }
 
+#' Query all rows for one HCPCS/CPT code from a CMS dataset version
+#'
+#' Pages through the CMS data-api for dataset `uuid`, filtering on
+#' `hcpcs_field == hcpcs_code`, and binds all pages into one tibble. On the
+#' first page, validates (via [validate_cms_filter_field()]) that
+#' `hcpcs_field` actually exists in the dataset, to guard against the CMS
+#' API's silent-unfiltered-response failure mode.
+#'
+#' @param uuid Character scalar, the CMS dataset version UUID to query.
+#' @param hcpcs_code Character scalar, the HCPCS/CPT code to filter on.
+#' @param hcpcs_field Character scalar naming the HCPCS/CPT code column in
+#'   the target dataset.
+#' @param page_size Integer, number of rows to request per page.
+#' @return Tibble of all matching rows across all pages.
 #' @export
 cms_query_hcpcs <- function(uuid,
                             hcpcs_code,
@@ -328,6 +395,18 @@ cms_query_hcpcs <- function(uuid,
   combined_tbl
 }
 
+#' Build CMS Physician & Other Practitioners benchmarks for the sampling codes
+#'
+#' Queries [cms_query_hcpcs()] for each code in `hcpcs_codes` against the
+#' given Physician & Other Practitioners dataset version, binds the results,
+#' and coerces the known numeric columns (`Avg_Sbmtd_Chrg`,
+#' `Avg_Mdcr_Alowd_Amt`, `Avg_Mdcr_Pymt_Amt`, `Tot_Srvcs`) that are present
+#' from character to numeric.
+#'
+#' @param physician_uuid Character scalar, the CMS Physician & Other
+#'   Practitioners by Provider and Service dataset version UUID.
+#' @param hcpcs_codes Character vector of HCPCS/CPT codes to query.
+#' @return Tibble of combined provider/service rows across all codes.
 #' @export
 cms_sampling_benchmarks <- function(
     physician_uuid,
@@ -365,6 +444,17 @@ cms_sampling_benchmarks <- function(
     )
 }
 
+#' Summarize CMS professional benchmark allowed amounts by HCPCS code
+#'
+#' Groups a CMS provider/service benchmark tibble by `HCPCS_Cd` and
+#' computes service-volume-weighted and unweighted summary statistics of
+#' `Avg_Mdcr_Alowd_Amt` across provider/service rows.
+#'
+#' @param cms_tbl Tibble from [cms_sampling_benchmarks()] (or equivalent),
+#'   with columns `HCPCS_Cd`, `Avg_Mdcr_Alowd_Amt`, `Tot_Srvcs`.
+#' @return Tibble with one row per `HCPCS_Cd`: `n_provider_service_rows`,
+#'   `total_services`, `service_weighted_mean_allowed`, `mean_allowed`,
+#'   `sd_allowed`, `median_allowed`, `p25_allowed`, `p75_allowed`.
 #' @export
 summarize_cms_benchmarks <- function(cms_tbl) {
   base::message("Summarizing CMS benchmark costs.")
@@ -426,6 +516,21 @@ summarize_cms_benchmarks <- function(cms_tbl) {
     )
 }
 
+#' Summarize CMS facility benchmark payments by code
+#'
+#' Groups a CMS facility benchmark tibble by `code_field` and computes
+#' summary statistics of `payment_field` across rows, analogous to
+#' [summarize_cms_benchmarks()] but for facility (rather than professional)
+#' benchmark tables and a caller-chosen payment column.
+#'
+#' @param cms_facility_tbl Tibble of CMS facility benchmark rows.
+#' @param code_field Character scalar naming the billing code column to
+#'   group by.
+#' @param payment_field Character scalar naming the payment column to
+#'   summarize.
+#' @return Tibble with one row per distinct code: `code`, `n_rows`,
+#'   `mean_payment`, `sd_payment`, `median_payment`, `p25_payment`,
+#'   `p75_payment`.
 #' @export
 summarize_cms_facility_benchmarks <- function(
     cms_facility_tbl,

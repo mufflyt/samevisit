@@ -13,5 +13,8 @@ plot_hospital_mrf_map(hospital_points)
 A \code{ggplot} object.
 }
 \description{
-Static jittered point map of hospitals with usable MRF-derived payer-rate data
+Needs the \code{maps} and \code{mapproj} packages installed -- \code{ggplot2::map_data()}
+and \code{ggplot2::coord_map()} call into them internally, even though no
+function from either is called directly in this file, which is why
+they're imported explicitly here rather than left undeclared.
 }
