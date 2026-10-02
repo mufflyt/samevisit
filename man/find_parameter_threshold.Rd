@@ -11,7 +11,8 @@ find_parameter_threshold(
   price_index_table = load_price_index_table(),
   search_lower,
   search_upper,
-  target_value = 0
+  target_value = 0,
+  strategy_cost_fn = compute_strategy_costs
 )
 }
 \arguments{
@@ -28,6 +29,10 @@ numeric scalar whose root (crossing \code{target_value}) is of interest.}
 interval for \code{parameter_name}.}
 
 \item{target_value}{Numeric scalar the metric should cross. Default 0.}
+
+\item{strategy_cost_fn}{Passed to \code{\link[=evaluate_metric_at]{evaluate_metric_at()}}. Defaults to
+\code{\link[=compute_strategy_costs]{compute_strategy_costs()}}; pass a different function to find a
+threshold over a different set of strategies.}
 }
 \value{
 A tibble with \code{parameter}, \code{threshold_value}, \code{converged}

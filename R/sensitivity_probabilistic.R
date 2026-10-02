@@ -394,3 +394,94 @@ summarize_probability_cheapest <- function(probabilistic_estimates) {
 
   summary_tbl
 }
+
+#' Probabilistic sensitivity analysis over an arbitrary strategy-cost function
+#'
+#' A generic Monte Carlo loop: for each draw, samples a full parameter set
+#' via [draw_parameter_set()], computes strategy costs with the
+#' caller-supplied `strategy_cost_fn`, and applies every function in
+#' `metric_fns` to that draw's `strategy_costs`, assembling one row per
+#' draw with one column per metric. Unlike [run_probabilistic_sensitivity()]
+#' -- which hardcodes the three Lynch-specific strategy names as column
+#' names and is paired to [compute_strategy_clinical_outcomes()]'s
+#' Lynch-specific clinical-outcome columns -- this function makes no
+#' assumption about strategy names or what a "metric" means, so it is
+#' usable by a project with a different strategy set (e.g. two strategies
+#' instead of three, no shared escalation target).
+#'
+#' @param model_parameters Tibble from [load_model_parameters()].
+#' @param strategy_cost_fn Function of `(model_parameters,
+#'   price_index_table = ...)` returning a list with a `strategy_costs`
+#'   element, matching [compute_strategy_costs()]'s signature/return
+#'   shape (e.g. a function built on [compute_multi_strategy_costs()]).
+#' @param metric_fns Named list of functions, each taking one draw's
+#'   `strategy_costs` tibble and returning a scalar. Each name becomes a
+#'   column in the result. Defaults to an empty list (the result then has
+#'   only the `draw` column -- not useful on its own, but kept as an
+#'   explicit default rather than requiring the argument, so a caller
+#'   who only wants strategy-cost side effects, e.g. for later
+#'   inspection, is not forced to supply a metric).
+#' @param price_index_table Tibble from [load_price_index_table()].
+#' @param n_simulations Integer, number of Monte Carlo draws.
+#' @param seed Integer or `NULL`. See [run_probabilistic_sensitivity()]
+#'   for the seeding/restore behavior, which this function matches
+#'   exactly.
+#' @return A tibble with one row per draw: `draw` plus one column per
+#'   entry in `metric_fns`.
+#' @export
+run_probabilistic_sensitivity_generic <- function(
+  model_parameters,
+  strategy_cost_fn,
+  metric_fns = base::list(),
+  price_index_table = load_price_index_table(),
+  n_simulations = 1000,
+  seed = 20260901
+) {
+  validate_positive(n_simulations, "n_simulations")
+
+  if (!base::is.null(seed)) {
+    old_seed <- if (base::exists(".Random.seed", envir = .GlobalEnv)) {
+      base::get(".Random.seed", envir = .GlobalEnv)
+    } else {
+      NULL
+    }
+    base::on.exit({
+      if (!base::is.null(old_seed)) {
+        base::assign(".Random.seed", old_seed, envir = .GlobalEnv)
+      } else if (base::exists(".Random.seed", envir = .GlobalEnv)) {
+        base::rm(".Random.seed", envir = .GlobalEnv)
+      }
+    }, add = TRUE)
+    base::set.seed(seed)
+  }
+
+  base::message(
+    "Running probabilistic sensitivity analysis: ", n_simulations,
+    " Monte Carlo draws",
+    if (base::is.null(seed)) " (unseeded)." else base::paste0(" (seed ", seed, ").")
+  )
+
+  simulation_rows <- purrr::map(base::seq_len(n_simulations), function(draw_index) {
+    if (draw_index %% 200 == 0) {
+      base::message("  Draw ", draw_index, " / ", n_simulations)
+    }
+
+    sampled_parameters <- draw_parameter_set(model_parameters)
+    strategy_result <- strategy_cost_fn(
+      sampled_parameters,
+      price_index_table = price_index_table
+    )
+
+    metric_values <- purrr::map(metric_fns, function(metric_fn) {
+      metric_fn(strategy_result$strategy_costs)
+    })
+
+    tibble::as_tibble(c(list(draw = draw_index), metric_values))
+  })
+
+  probabilistic_estimates <- dplyr::bind_rows(simulation_rows)
+
+  base::message("PSA complete: ", n_simulations, " draws.")
+
+  probabilistic_estimates
+}

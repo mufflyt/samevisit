@@ -9,7 +9,8 @@ evaluate_metric_at(
   parameter_name,
   parameter_value,
   price_index_table,
-  target_metric_fn
+  target_metric_fn,
+  strategy_cost_fn = compute_strategy_costs
 )
 }
 \arguments{
@@ -23,6 +24,13 @@ evaluate_metric_at(
 
 \item{target_metric_fn}{Function of \code{strategy_costs} returning a
 numeric scalar.}
+
+\item{strategy_cost_fn}{Function of \verb{(model_parameters, price_index_table = ...)} returning a list with a \code{strategy_costs}
+element, matching \code{\link[=compute_strategy_costs]{compute_strategy_costs()}}'s signature/return
+shape. Defaults to \code{\link[=compute_strategy_costs]{compute_strategy_costs()}}; pass a different
+function (e.g. one built on \code{\link[=compute_multi_strategy_costs]{compute_multi_strategy_costs()}}) to run
+this same perturb-and-reread mechanism over a different set of
+strategies.}
 }
 \value{
 Numeric scalar: the target metric at \code{parameter_value}.

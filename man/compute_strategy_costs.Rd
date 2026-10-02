@@ -25,9 +25,9 @@ strategy) and \code{cost_components} (long tibble, one row per
 strategy-component).
 }
 \description{
-Orchestrates \code{\link[=compute_dnc_strategy_cost]{compute_dnc_strategy_cost()}},
-\code{\link[=compute_office_emb_strategy_cost]{compute_office_emb_strategy_cost()}}, and
-\code{\link[=compute_combined_emb_strategy_cost]{compute_combined_emb_strategy_cost()}}, and assembles both a
-strategy-level summary table and a long-format resource-component
-table for plotting and reporting.
+A thin, exact-output-preserving wrapper over
+\code{\link[=compute_multi_strategy_costs]{compute_multi_strategy_costs()}}, orchestrating
+\code{\link[=compute_dnc_strategy_cost]{compute_dnc_strategy_cost()}} (the rescue strategy every failed
+sampling attempt may escalate to), \code{\link[=compute_office_emb_strategy_cost]{compute_office_emb_strategy_cost()}},
+and \code{\link[=compute_combined_emb_strategy_cost]{compute_combined_emb_strategy_cost()}}.
 }

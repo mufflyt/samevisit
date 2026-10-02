@@ -15,6 +15,7 @@ A one-row tibble with the incremental cost and percent
 difference of \code{combined_emb} relative to \code{office_emb}.
 }
 \description{
+A thin, exact-output-preserving wrapper over \code{\link[=compare_two_strategies]{compare_two_strategies()}}.
 Reports \code{expected_total_cost[combined_emb] - expected_total_cost[office_emb]}
 -- the direct answer to "how much does coordinating biopsy with
 colonoscopy save (or cost) relative to arranging it separately?"

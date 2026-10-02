@@ -39,8 +39,65 @@ compare_strategies_to_cheapest <- function(strategy_costs) {
   strategy_comparison
 }
 
+#' Incremental cost of one strategy relative to another, by name
+#'
+#' The generic comparison behind [compare_combined_vs_office()]. Useful
+#' directly when a project's strategy names aren't `office_emb`/
+#' `combined_emb` -- any two `strategy` values present in `strategy_costs`
+#' can be compared.
+#'
+#' @param strategy_costs Tibble from
+#'   `compute_strategy_costs()$strategy_costs` or
+#'   `compute_multi_strategy_costs()$strategy_costs`.
+#' @param strategy_a Character scalar, a value in `strategy_costs$strategy`.
+#' @param strategy_b Character scalar, a value in `strategy_costs$strategy`
+#'   that `strategy_a` is compared against.
+#' @return A one-row tibble: `strategy_a`, `strategy_a_cost`, `strategy_b`,
+#'   `strategy_b_cost`, `incremental_cost` (`strategy_a_cost -
+#'   strategy_b_cost`), `pct_difference`, `strategy_a_is_cost_saving`.
+#' @export
+compare_two_strategies <- function(strategy_costs, strategy_a, strategy_b) {
+  cost_a <- strategy_costs$expected_total_cost[
+    strategy_costs$strategy == strategy_a
+  ]
+  cost_b <- strategy_costs$expected_total_cost[
+    strategy_costs$strategy == strategy_b
+  ]
+
+  if (length(cost_a) != 1 || length(cost_b) != 1) {
+    base::stop(
+      "compare_two_strategies() requires exactly one '", strategy_a,
+      "' and one '", strategy_b, "' row in strategy_costs."
+    )
+  }
+
+  incremental_cost <- cost_a - cost_b
+  pct_difference <- if (cost_b == 0) {
+    NA_real_
+  } else {
+    100 * incremental_cost / cost_b
+  }
+
+  base::message(
+    "Incremental cost of ", strategy_a, " vs. ", strategy_b, ": $",
+    base::round(incremental_cost, 2), " (",
+    base::round(pct_difference, 1), "%)."
+  )
+
+  tibble::tibble(
+    strategy_a = strategy_a,
+    strategy_a_cost = cost_a,
+    strategy_b = strategy_b,
+    strategy_b_cost = cost_b,
+    incremental_cost = incremental_cost,
+    pct_difference = pct_difference,
+    strategy_a_is_cost_saving = incremental_cost < 0
+  )
+}
+
 #' Incremental cost of adding EMB to colonoscopy vs. performing EMB separately
 #'
+#' A thin, exact-output-preserving wrapper over [compare_two_strategies()].
 #' Reports `expected_total_cost[combined_emb] - expected_total_cost[office_emb]`
 #' -- the direct answer to "how much does coordinating biopsy with
 #' colonoscopy save (or cost) relative to arranging it separately?"
@@ -51,39 +108,14 @@ compare_strategies_to_cheapest <- function(strategy_costs) {
 #'   difference of `combined_emb` relative to `office_emb`.
 #' @export
 compare_combined_vs_office <- function(strategy_costs) {
-  combined_cost <- strategy_costs$expected_total_cost[
-    strategy_costs$strategy == "combined_emb"
-  ]
-  office_cost <- strategy_costs$expected_total_cost[
-    strategy_costs$strategy == "office_emb"
-  ]
-
-  if (length(combined_cost) != 1 || length(office_cost) != 1) {
-    base::stop(
-      "compare_combined_vs_office() requires exactly one 'combined_emb' ",
-      "and one 'office_emb' row in strategy_costs."
-    )
-  }
-
-  incremental_cost <- combined_cost - office_cost
-  pct_difference <- if (office_cost == 0) {
-    NA_real_
-  } else {
-    100 * incremental_cost / office_cost
-  }
-
-  base::message(
-    "Incremental cost of combined_emb vs. office_emb: $",
-    base::round(incremental_cost, 2), " (",
-    base::round(pct_difference, 1), "%)."
-  )
+  comparison <- compare_two_strategies(strategy_costs, "combined_emb", "office_emb")
 
   tibble::tibble(
-    combined_emb_cost = combined_cost,
-    office_emb_cost = office_cost,
-    incremental_cost_combined_vs_office = incremental_cost,
-    pct_difference_combined_vs_office = pct_difference,
-    combined_is_cost_saving = incremental_cost < 0
+    combined_emb_cost = comparison$strategy_a_cost,
+    office_emb_cost = comparison$strategy_b_cost,
+    incremental_cost_combined_vs_office = comparison$incremental_cost,
+    pct_difference_combined_vs_office = comparison$pct_difference,
+    combined_is_cost_saving = comparison$strategy_a_is_cost_saving
   )
 }
 

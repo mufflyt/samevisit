@@ -38,6 +38,13 @@ metric_expected_total_cost <- function(strategy_name) {
 #' @param price_index_table Tibble from [load_price_index_table()].
 #' @param target_metric_fn Function of `strategy_costs` returning a
 #'   numeric scalar.
+#' @param strategy_cost_fn Function of `(model_parameters,
+#'   price_index_table = ...)` returning a list with a `strategy_costs`
+#'   element, matching [compute_strategy_costs()]'s signature/return
+#'   shape. Defaults to [compute_strategy_costs()]; pass a different
+#'   function (e.g. one built on [compute_multi_strategy_costs()]) to run
+#'   this same perturb-and-reread mechanism over a different set of
+#'   strategies.
 #' @return Numeric scalar: the target metric at `parameter_value`.
 #' @export
 evaluate_metric_at <- function(
@@ -45,14 +52,15 @@ evaluate_metric_at <- function(
   parameter_name,
   parameter_value,
   price_index_table,
-  target_metric_fn
+  target_metric_fn,
+  strategy_cost_fn = compute_strategy_costs
 ) {
   perturbed_parameters <- override_model_parameters(
     model_parameters,
     stats::setNames(list(parameter_value), parameter_name)
   )
 
-  strategy_result <- compute_strategy_costs(
+  strategy_result <- strategy_cost_fn(
     perturbed_parameters,
     price_index_table = price_index_table
   )
@@ -71,6 +79,8 @@ evaluate_metric_at <- function(
 #' @param target_metric_fn Function of `strategy_costs` returning a
 #'   numeric scalar. Defaults to
 #'   [metric_combined_vs_office_incremental()].
+#' @param strategy_cost_fn Passed to [evaluate_metric_at()]. Defaults to
+#'   [compute_strategy_costs()].
 #' @return A tibble with one row per parameter: `parameter`,
 #'   `base_value`, `low_value`, `high_value`, `metric_at_base`,
 #'   `metric_at_low`, `metric_at_high`, and `spread` (the absolute range
@@ -83,7 +93,8 @@ run_one_way_sensitivity <- function(
       !base::is.na(model_parameters$high_value)
   ],
   price_index_table = load_price_index_table(),
-  target_metric_fn = metric_combined_vs_office_incremental
+  target_metric_fn = metric_combined_vs_office_incremental,
+  strategy_cost_fn = compute_strategy_costs
 ) {
   base::message(
     "Running one-way sensitivity analysis on ", length(parameter_names),
@@ -95,7 +106,8 @@ run_one_way_sensitivity <- function(
     parameter_names[[1]],
     get_parameter_value(model_parameters, parameter_names[[1]]),
     price_index_table,
-    target_metric_fn
+    target_metric_fn,
+    strategy_cost_fn
   )
 
   sensitivity_rows <- purrr::map(parameter_names, function(parameter_name) {
@@ -106,11 +118,11 @@ run_one_way_sensitivity <- function(
 
     metric_at_low <- evaluate_metric_at(
       model_parameters, parameter_name, parameter_row$low_value[[1]],
-      price_index_table, target_metric_fn
+      price_index_table, target_metric_fn, strategy_cost_fn
     )
     metric_at_high <- evaluate_metric_at(
       model_parameters, parameter_name, parameter_row$high_value[[1]],
-      price_index_table, target_metric_fn
+      price_index_table, target_metric_fn, strategy_cost_fn
     )
 
     tibble::tibble(

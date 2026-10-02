@@ -396,49 +396,74 @@ compute_combined_emb_strategy_cost <- function(
   )
 }
 
-#' Compute expected costs for all three strategies
+#' Compute expected costs for an arbitrary named set of strategies
 #'
-#' Orchestrates [compute_dnc_strategy_cost()],
-#' [compute_office_emb_strategy_cost()], and
-#' [compute_combined_emb_strategy_cost()], and assembles both a
-#' strategy-level summary table and a long-format resource-component
-#' table for plotting and reporting.
+#' The generic strategy-cost engine behind [compute_strategy_costs()].
+#' Every function in `strategy_fns` must follow the strategy-cost
+#' function contract: given `(model_parameters, price_index_table,
+#' reference_year)` -- or, if that strategy is named in `rescue_strategy`'s
+#' place as the *target* of another strategy's escalation,
+#' `(model_parameters, rescue_cost, price_index_table, reference_year)`,
+#' matching [compute_office_emb_strategy_cost()]'s and
+#' [compute_combined_emb_strategy_cost()]'s existing signature -- it must
+#' return `list(components, escalation_probability, escalation_cost,
+#' initial_cost, expected_total_cost)`, where `components` is a tibble
+#' with `strategy`/`component`/`amount` columns (see
+#' [compute_dnc_strategy_cost()] for a worked example of the contract).
 #'
+#' @param strategy_fns Named list of strategy-cost functions following
+#'   the contract above. Names become the `strategy` column's values.
 #' @param model_parameters Tibble from [load_model_parameters()].
 #' @param price_index_table Tibble from [load_price_index_table()].
 #'   Defaults to loading `data/cpi_medical_care.csv`.
 #' @param reference_year Numeric scalar. Defaults to the model's
 #'   `reference_dollar_year` parameter.
+#' @param rescue_strategy Character scalar naming one entry of
+#'   `strategy_fns` that every *other* strategy may escalate to (e.g. a
+#'   failed office attempt escalating to an operative rescue procedure).
+#'   That entry is computed first, with no rescue cost of its own, and
+#'   its `expected_total_cost` is passed as the second positional
+#'   argument to every other strategy function. `NULL` (the default)
+#'   means no strategy has a shared escalation target -- every strategy
+#'   function is called with just `(model_parameters, price_index_table,
+#'   reference_year)`, the shape a comparison with no third "rescue" arm
+#'   needs.
 #' @return A named list with `strategy_costs` (tibble, one row per
 #'   strategy) and `cost_components` (long tibble, one row per
 #'   strategy-component).
 #' @export
-compute_strategy_costs <- function(
+compute_multi_strategy_costs <- function(
+  strategy_fns,
   model_parameters,
   price_index_table = load_price_index_table(),
-  reference_year = get_parameter_value(model_parameters, "reference_dollar_year")
+  reference_year = get_parameter_value(model_parameters, "reference_dollar_year"),
+  rescue_strategy = NULL
 ) {
   base::message(
     "Computing strategy costs (reference year: ", reference_year, ")."
   )
 
-  dnc_result <- compute_dnc_strategy_cost(
-    model_parameters, price_index_table, reference_year
-  )
-  office_result <- compute_office_emb_strategy_cost(
-    model_parameters, dnc_result$expected_total_cost,
-    price_index_table, reference_year
-  )
-  combined_result <- compute_combined_emb_strategy_cost(
-    model_parameters, dnc_result$expected_total_cost,
-    price_index_table, reference_year
-  )
+  strategy_results <- base::list()
 
-  strategy_results <- list(
-    dnc = dnc_result,
-    office_emb = office_result,
-    combined_emb = combined_result
-  )
+  if (!base::is.null(rescue_strategy)) {
+    strategy_results[[rescue_strategy]] <- strategy_fns[[rescue_strategy]](
+      model_parameters, price_index_table, reference_year
+    )
+    rescue_cost <- strategy_results[[rescue_strategy]]$expected_total_cost
+  }
+
+  other_names <- base::setdiff(base::names(strategy_fns), rescue_strategy)
+  for (strategy_name in other_names) {
+    strategy_results[[strategy_name]] <- if (base::is.null(rescue_strategy)) {
+      strategy_fns[[strategy_name]](model_parameters, price_index_table, reference_year)
+    } else {
+      strategy_fns[[strategy_name]](
+        model_parameters, rescue_cost, price_index_table, reference_year
+      )
+    }
+  }
+  # preserve strategy_fns' original ordering rather than rescue-then-others
+  strategy_results <- strategy_results[base::names(strategy_fns)]
 
   strategy_costs <- tibble::tibble(
     strategy = base::names(strategy_results),
@@ -454,9 +479,7 @@ compute_strategy_costs <- function(
     dplyr::arrange(.data$expected_total_cost)
 
   cost_components <- dplyr::bind_rows(
-    dnc_result$components,
-    office_result$components,
-    combined_result$components
+    purrr::map(strategy_results, "components")
   )
 
   base::message("Strategy cost ranking (lowest to highest expected cost):")
@@ -468,5 +491,40 @@ compute_strategy_costs <- function(
   list(
     strategy_costs = strategy_costs,
     cost_components = cost_components
+  )
+}
+
+#' Compute expected costs for all three strategies
+#'
+#' A thin, exact-output-preserving wrapper over
+#' [compute_multi_strategy_costs()], orchestrating
+#' [compute_dnc_strategy_cost()] (the rescue strategy every failed
+#' sampling attempt may escalate to), [compute_office_emb_strategy_cost()],
+#' and [compute_combined_emb_strategy_cost()].
+#'
+#' @param model_parameters Tibble from [load_model_parameters()].
+#' @param price_index_table Tibble from [load_price_index_table()].
+#'   Defaults to loading `data/cpi_medical_care.csv`.
+#' @param reference_year Numeric scalar. Defaults to the model's
+#'   `reference_dollar_year` parameter.
+#' @return A named list with `strategy_costs` (tibble, one row per
+#'   strategy) and `cost_components` (long tibble, one row per
+#'   strategy-component).
+#' @export
+compute_strategy_costs <- function(
+  model_parameters,
+  price_index_table = load_price_index_table(),
+  reference_year = get_parameter_value(model_parameters, "reference_dollar_year")
+) {
+  compute_multi_strategy_costs(
+    strategy_fns = base::list(
+      dnc = compute_dnc_strategy_cost,
+      office_emb = compute_office_emb_strategy_cost,
+      combined_emb = compute_combined_emb_strategy_cost
+    ),
+    model_parameters = model_parameters,
+    price_index_table = price_index_table,
+    reference_year = reference_year,
+    rescue_strategy = "dnc"
   )
 }

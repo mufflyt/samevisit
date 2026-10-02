@@ -9,7 +9,8 @@ run_one_way_sensitivity(
   parameter_names = model_parameters$parameter[!base::is.na(model_parameters$low_value) &
     !base::is.na(model_parameters$high_value)],
   price_index_table = load_price_index_table(),
-  target_metric_fn = metric_combined_vs_office_incremental
+  target_metric_fn = metric_combined_vs_office_incremental,
+  strategy_cost_fn = compute_strategy_costs
 )
 }
 \arguments{
@@ -25,6 +26,9 @@ numeric parameter with bounds defined.}
 \item{target_metric_fn}{Function of \code{strategy_costs} returning a
 numeric scalar. Defaults to
 \code{\link[=metric_combined_vs_office_incremental]{metric_combined_vs_office_incremental()}}.}
+
+\item{strategy_cost_fn}{Passed to \code{\link[=evaluate_metric_at]{evaluate_metric_at()}}. Defaults to
+\code{\link[=compute_strategy_costs]{compute_strategy_costs()}}.}
 }
 \value{
 A tibble with one row per parameter: \code{parameter},
